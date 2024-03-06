@@ -1,0 +1,35 @@
+name: Zig Build
+
+on:
+  push:
+    branches: [ zig-pkg ]
+  pull_request:
+    branches: [ zig-pkg ]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        targets:
+          - x86_64-freestanding
+          - x86-freestanding
+          - aarch64-freestanding
+          - riscv32-freestanding
+          - mips-freestanding
+          - mipsel-freestanding
+          - thumb-freestanding
+          - arm-freestanding
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - uses: korandoru/setup-zig@v1
+        with:
+          zig-version: 0.12.0
+
+      - name: Build Summary ${{ matrix.targets }}
+        run: zig build --summary all -freference-trace -Dtarget=${{ matrix.targets }}

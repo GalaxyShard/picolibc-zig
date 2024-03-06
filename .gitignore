@@ -45,3 +45,4 @@ lost+found
 # ignore meson build directories
 
 build-*/
+*zig-*/
