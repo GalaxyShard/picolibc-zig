@@ -215,6 +215,8 @@ pub fn build(b: *std.Build) !void {
         ._XTENSA_HAVE_CONFIG_CORE_ISA_H = @intFromBool(target.result.cpu.arch == .xtensa),
     });
 
+
+
     const newlib = b.addStaticLibrary(.{
         .name = "c",
         .target = target,
@@ -890,8 +892,8 @@ pub fn build(b: *std.Build) !void {
             },
         },
     );
-    // fixme: get picolibc header
-    // newlib.installHeadersDirectory(picolibc_h.include_path, "");
+
+    newlib.installHeader(picolibc_h.getOutput(), "picolibc.h");
     b.installArtifact(newlib);
 
     // fixme: linking newlib to hello-world
