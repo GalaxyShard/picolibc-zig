@@ -1,4 +1,37 @@
 const std = @import("std");
+const builtin = @import("builtin");
+
+const find_build_sources = @import("find-build-sources.zig");
+
+fn isAsmcpp(path: []const u8) bool {
+    return std.mem.endsWith(u8, path, ".S");
+}
+fn isAsmNoStub(path: []const u8) bool {
+    return std.mem.endsWith(u8, path, ".S") and !std.mem.endsWith(u8, path, "-stub.S");
+}
+fn isAsmNoSuffix(path: []const u8) bool {
+    return isAsmcpp(path)
+        and null == std.mem.lastIndexOfScalar(
+            u8,
+            path[(std.mem.lastIndexOfScalar(u8, path, '/') orelse 0)..],
+            '-'
+        );
+}
+fn isAsmNoSuffixExcept(comptime suffix: []const u8) fn(path: []const u8) bool {
+    return struct {
+        pub fn inner(path: []const u8) bool {
+            return isAsmNoSuffix(path)
+                or std.mem.endsWith(u8, path, "-" ++ suffix ++ ".S");
+        }
+    }.inner;
+}
+fn isAsmWithSuffix(comptime suffix: []const u8) fn(path: []const u8) bool {
+    return struct {
+        pub fn inner(path: []const u8) bool {
+            return std.mem.endsWith(u8, path, "-" ++ suffix ++ ".S");
+        }
+    }.inner;
+}
 
 pub fn build(b: *std.Build) !void {
     const picolibc_ver = try std.SemanticVersion.parse("1.8.6");
@@ -16,6 +49,8 @@ pub fn build(b: *std.Build) !void {
             .cmake = b.path("picolibc.h.in"),
         },
     }, .{
+        // checked with defaults for picolibc as of July 21st, 2024 (closest to 1.8.6)
+        // commit 5419cb658899359f70af704ea4d6d99b5c3db9ed
         .ATOMIC_UNGETC = {},
         .FAST_STRCMP = {},
         .MISSING_SYSCALL_NAMES = null,
@@ -24,13 +59,13 @@ pub fn build(b: *std.Build) !void {
         .NEWLIB_TLS = {},
         .PICOLIBC_TLS = {},
         .POSIX_IO = {},
-        .POSIX_CONSOLE = {},
-        .PREFER_SIZE_OVER_SPEED = {},
-        .REENTRANT_SYSCALLS_PROVIDED = {},
+        .POSIX_CONSOLE = null,
+        .PREFER_SIZE_OVER_SPEED = null, // add this as an option
+        .REENTRANT_SYSCALLS_PROVIDED = null,
         .TINY_STDIO = {},
-        ._ATEXIT_DYNAMIC_ALLOC = {},
-        ._FSEEK_OPTIMIZATION = {},
-        ._FVWRITE_IN_STREAMIO = {},
+        ._ATEXIT_DYNAMIC_ALLOC = null,
+        ._FSEEK_OPTIMIZATION = null,
+        ._FVWRITE_IN_STREAMIO = null,
         ._HAVE_ALIAS_ATTRIBUTE = {},
         ._HAVE_ALLOC_SIZE = {},
         ._HAVE_ATTRIBUTE_ALWAYS_INLINE = {},
@@ -67,7 +102,7 @@ pub fn build(b: *std.Build) !void {
         ._HAVE_PICOLIBC_TLS_API = {},
         ._HAVE_SEMIHOST = {},
         ._HAVE_WEAK_ATTRIBUTE = {},
-        ._ICONV_ENABLE_EXTERNAL_CCS = {},
+        ._ICONV_ENABLE_EXTERNAL_CCS = null,
         ._ICONV_FROM_ENCODING_ = {},
         ._ICONV_FROM_ENCODING_BIG5 = {},
         ._ICONV_FROM_ENCODING_CP775 = {},
@@ -175,7 +210,6 @@ pub fn build(b: *std.Build) !void {
         ._PRINTF_SMALL_ULTOA = {},
         ._LITE_EXIT = {},
         ._MB_CAPABLE = null,
-        ._MB_LEN_MAX = 1,
         ._NANO_FORMATTED_IO = null,
         ._NANO_MALLOC = {},
         .NEWLIB_VERSION = b.fmt("{}.{}.{}", .{ newlib_ver.major, newlib_ver.minor, newlib_ver.patch }),
@@ -184,8 +218,8 @@ pub fn build(b: *std.Build) !void {
         .PROJECT_VERSION = b.fmt("{}.{}.{}", .{ picolibc_ver.major, picolibc_ver.minor, picolibc_ver.patch }),
         .PROJECT_VERSION_MAJOR = @as(i64, @intCast(picolibc_ver.major)),
         ._REENT_GLOBAL_ATEXIT = null,
-        ._RETARGETABLE_LOCKING = {},
-        ._UNBUF_STREAM_OPT = {},
+        ._RETARGETABLE_LOCKING = !builtin.single_threaded,
+        ._UNBUF_STREAM_OPT = null,
         ._WANT_IO_C99_FORMATS = {},
         ._WANT_IO_LONG_LONG = null,
         ._WANT_IO_LONG_DOUBLE = null,
@@ -204,15 +238,16 @@ pub fn build(b: *std.Build) !void {
         ._ASSERT_VERBOSE = {},
         .__HAVE_LOCALE_INFO_EXTENDED__ = null,
         .__HAVE_LOCALE_INFO__ = null,
+        ._ELIX_LEVEL = 4,
         .NEWLIB_MINOR = @as(i64, @intCast(newlib_ver.minor)),
         .NEWLIB_PATCH = @as(i64, @intCast(newlib_ver.patch)),
         .NEWLIB_MAJOR = @as(i64, @intCast(newlib_ver.major)),
         .__OBSOLETE_MATH_DOUBLE = 1,
         .__OBSOLETE_MATH_FLOAT = 1,
-        .__PICOLIBC_CRT_RUNTIME_SIZE = 0,
+        .__PICOLIBC_CRT_RUNTIME_SIZE = null,
         .PROJECT_VERSION_PATCH = @as(i64, @intCast(picolibc_ver.patch)),
-        .__SINGLE_THREAD__ = @intFromBool(@import("builtin").single_threaded),
-        ._XTENSA_HAVE_CONFIG_CORE_ISA_H = @intFromBool(target.result.cpu.arch == .xtensa),
+        .__SINGLE_THREAD__ = builtin.single_threaded,
+        ._XTENSA_HAVE_CONFIG_CORE_ISA_H = target.result.cpu.arch == .xtensa,
     });
 
 
@@ -229,7 +264,8 @@ pub fn build(b: *std.Build) !void {
     newlib.addSystemIncludePath(b.path("newlib/libm/common"));
     newlib.addSystemIncludePath(b.path("newlib/libc/stdio"));
     newlib.addSystemIncludePath(b.path("newlib/libc/stdio/sys"));
-    newlib.defineCMacro("_LIBC", null);
+    newlib.root_module.addCMacro("_LIBC", "1");
+
     switch (newlib.rootModuleTarget().cpu.arch) {
         .avr => {
             newlib.addAssemblyFile(b.path("newlib/libc/machine/avr/setjmp.S"));
